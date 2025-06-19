@@ -268,3 +268,42 @@ export function validateQueryParams<T>(
     return { success: false, error: "Invalid query parameters" };
   }
 }
+
+// Notification validation schemas
+export const sendNotificationSchema = z.object({
+  type: z.enum(["whatsapp", "email", "sms"], {
+    required_error: "Notification type is required",
+    invalid_type_error: "Invalid notification type",
+  }),
+  recipients: z
+    .array(
+      z.object({
+        user_id: z.string().uuid("Invalid user ID").optional(),
+        phone: z.string().optional(),
+        email: z.string().email().optional(),
+        department_id: z.string().uuid("Invalid department ID").optional(),
+      }),
+    )
+    .min(1, "At least one recipient is required")
+    .refine(
+      (recipients) =>
+        recipients.every(
+          (r) => r.user_id || r.phone || r.email || r.department_id,
+        ),
+      "Each recipient must have at least one identifier",
+    ),
+  message: z.object({
+    subject: z.string().optional(),
+    body: z
+      .string()
+      .min(1, "Message body is required")
+      .max(1000, "Message body too long"),
+    template_id: z.string().optional(),
+    variables: z.record(z.string()).optional(),
+  }),
+  priority: z.enum(["low", "normal", "high", "urgent"]).optional(),
+  scheduled_for: z.string().datetime().optional(),
+  metadata: z.record(z.any()).optional(),
+});
+
+export type SendNotificationRequest = z.infer<typeof sendNotificationSchema>;
