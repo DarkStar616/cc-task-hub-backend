@@ -5,11 +5,6 @@ import Script from "next/script";
 import { TempoInit } from "@/components/tempo-init";
 import { ThemeProvider } from "@/components/theme-provider";
 
-// Initialize Sentry on the client side
-if (typeof window !== "undefined" && process.env.NEXT_PUBLIC_SENTRY_DSN) {
-  import("../../../sentry.client.config");
-}
-
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
@@ -35,14 +30,6 @@ export default function RootLayout({
           {children}
         </ThemeProvider>
         <TempoInit />
-        {/* Sentry Error Boundary */}
-        <Script id="sentry-init" strategy="beforeInteractive">
-          {`
-            if (typeof window !== 'undefined' && '${process.env.NEXT_PUBLIC_SENTRY_DSN}') {
-              window.__SENTRY_DSN__ = '${process.env.NEXT_PUBLIC_SENTRY_DSN}';
-            }
-          `}
-        </Script>
       </body>
     </html>
   );
