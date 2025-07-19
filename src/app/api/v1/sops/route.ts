@@ -1,169 +1,158 @@
-import { NextRequest } from "next/server";
-import {
-  getAuthContext,
-  hasRole,
-  createUnauthorizedResponse,
-  createForbiddenResponse,
-  createBadRequestResponse,
-  createSuccessResponse,
-  createErrorResponse,
-} from "@/utils/auth";
-import { validateRequestBody, createSopSchema } from "@/utils/validation";
-import { logSensitiveAction, SENSITIVE_ACTIONS } from "@/utils/audit-log";
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@supabase/supabase-js';
+import { validateAuth } from '@/utils/auth';
+
+const supabase = createClient(
+  process.env.SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_KEY!
+);
+
+// Department ID mapping
+const departmentIdMap = {
+  'Maintenance': 'dept_001',
+  'Housekeeping': 'dept_002',
+  'Front-of-House': 'dept_003',
+  'Activities': 'dept_004',
+  'Operations': 'dept_005',
+  'Grounds': 'dept_006'
+};
+
+const departmentNameMap = Object.fromEntries(
+  Object.entries(departmentIdMap).map(([name, id]) => [id, name])
+);
 
 export async function GET(request: NextRequest) {
   try {
-    const authContext = await getAuthContext(request);
-
-    if (!authContext.user) {
-      return createUnauthorizedResponse();
+    const authResult = await validateAuth(request);
+    if (!authResult.success) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Authentication required',
+        error: authResult.error 
+      }, { status: 401 });
     }
 
     const { searchParams } = new URL(request.url);
-    const departmentId = searchParams.get("department_id");
-    const status = searchParams.get("status");
-    const tags = searchParams.get("tags")?.split(",");
-    const limit = parseInt(searchParams.get("limit") || "50");
-    const offset = parseInt(searchParams.get("offset") || "0");
+    const department = searchParams.get('department');
 
-    let query = authContext.supabase
-      .from("sops")
-      .select(
-        `
-        id,
-        title,
-        description,
-        content,
-        department_id,
-        status,
-        tags,
-        attachments,
-        version,
-        created_at,
-        updated_at,
-        created_by_user:users!sops_created_by_fkey(full_name),
-        updated_by_user:users!sops_updated_by_fkey(full_name),
-        department:departments(name)
-      `,
-      )
-      .range(offset, offset + limit - 1)
-      .order("updated_at", { ascending: false });
+    let query = supabase
+      .from('sops')
+      .select('*')
+      .order('created_at', { ascending: false });
 
-    // Apply role-based filtering
-    if (!hasRole(authContext.user.role, ["God", "Admin"])) {
-      if (hasRole(authContext.user.role, ["Manager"])) {
-        // Managers can see department SOPs and public ones
-        if (authContext.user.department_id) {
-          query = query.or(
-            `department_id.eq.${authContext.user.department_id},department_id.is.null`,
-          );
-        }
-      } else {
-        // Users can see active SOPs in their department and public ones
-        query = query.eq("status", "active");
-        if (authContext.user.department_id) {
-          query = query.or(
-            `department_id.eq.${authContext.user.department_id},department_id.is.null`,
-          );
-        }
+    // Apply department filtering based on user role
+    if (authResult.user.role !== 'God' && authResult.user.role !== 'Admin') {
+      if (department) {
+        const deptId = departmentIdMap[department as keyof typeof departmentIdMap] || department;
+        query = query.eq('department_id', deptId);
+      } else if (authResult.user.department_id) {
+        query = query.eq('department_id', authResult.user.department_id);
       }
-    }
-
-    // Apply additional filters
-    if (departmentId) {
-      query = query.eq("department_id", departmentId);
-    }
-    if (status) {
-      query = query.eq("status", status);
-    }
-    if (tags && tags.length > 0) {
-      query = query.overlaps("tags", tags);
+    } else if (department && department !== 'all') {
+      const deptId = departmentIdMap[department as keyof typeof departmentIdMap] || department;
+      query = query.eq('department_id', deptId);
     }
 
     const { data, error } = await query;
 
     if (error) {
-      console.error("SOPs fetch error:", error);
-      return createErrorResponse("Failed to fetch SOPs");
+      console.error('Error fetching SOPs:', error);
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Failed to fetch SOPs',
+        error: error.message 
+      }, { status: 500 });
     }
 
-    return createSuccessResponse({ sops: data });
+    // Convert department IDs to names in response
+    const sopsWithDepartmentNames = data?.map(sop => ({
+      ...sop,
+      department: departmentNameMap[sop.department_id] || sop.department_id
+    }));
+
+    return NextResponse.json({
+      success: true,
+      message: 'SOPs retrieved successfully',
+      data: sopsWithDepartmentNames
+    });
   } catch (error) {
-    console.error("SOPs GET error:", error);
-    return createErrorResponse("Internal server error");
+    console.error('Error in SOPs GET:', error);
+    return NextResponse.json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const authContext = await getAuthContext(request);
-
-    if (!authContext.user) {
-      return createUnauthorizedResponse();
-    }
-
-    // Only Admin, Manager, and God can create SOPs
-    if (!hasRole(authContext.user.role, ["God", "Admin", "Manager"])) {
-      return createForbiddenResponse("Insufficient permissions to create SOPs");
+    const authResult = await validateAuth(request);
+    if (!authResult.success) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Authentication required',
+        error: authResult.error 
+      }, { status: 401 });
     }
 
     const body = await request.json();
-    const validation = validateRequestBody(createSopSchema, body);
+    const { title, content, department, department_id, file_url, tags } = body;
 
-    if (!validation.success) {
-      return createBadRequestResponse(validation.error);
+    // Validate required fields
+    if (!title || !content) {
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Title and content are required' 
+      }, { status: 400 });
     }
 
-    const sopData = validation.data;
-
-    // Managers can only create SOPs for their department
-    if (authContext.user.role === "Manager") {
-      if (
-        sopData.department_id &&
-        sopData.department_id !== authContext.user.department_id
-      ) {
-        return createForbiddenResponse(
-          "Can only create SOPs for your department",
-        );
-      }
-      if (!sopData.department_id) {
-        sopData.department_id = authContext.user.department_id;
-      }
+    // Convert department name to ID if provided
+    let finalDepartmentId = department_id;
+    if (department && !department_id) {
+      finalDepartmentId = departmentIdMap[department as keyof typeof departmentIdMap] || department;
     }
 
-    const { data: newSop, error } = await authContext.supabase
-      .from("sops")
+    const { data, error } = await supabase
+      .from('sops')
       .insert({
-        ...sopData,
-        created_by: authContext.user.id,
-        status: "draft",
-        version: 1,
-        created_at: new Date().toISOString(),
+        title,
+        content,
+        department_id: finalDepartmentId || authResult.user.department_id,
+        file_url,
+        tags,
+        created_by: authResult.user.id,
+        updated_by: authResult.user.id
       })
       .select()
       .single();
 
     if (error) {
-      console.error("SOP creation error:", error);
-      return createErrorResponse("Failed to create SOP");
+      console.error('Error creating SOP:', error);
+      return NextResponse.json({ 
+        success: false, 
+        message: 'Failed to create SOP',
+        error: error.message 
+      }, { status: 500 });
     }
 
-    // Log SOP creation
-    await logSensitiveAction(
-      authContext,
-      SENSITIVE_ACTIONS.SOP_CREATION,
-      {
-        tableName: "sops",
-        recordId: newSop.id,
-        newValues: sopData,
-        metadata: { action: "sop_created" },
-      },
-      request,
-    );
+    // Convert department ID to name in response
+    const sopWithDepartmentName = {
+      ...data,
+      department: departmentNameMap[data.department_id] || data.department_id
+    };
 
-    return createSuccessResponse({ sop: newSop }, 201);
+    return NextResponse.json({
+      success: true,
+      message: 'SOP created successfully',
+      data: sopWithDepartmentName
+    }, { status: 201 });
   } catch (error) {
-    console.error("SOPs POST error:", error);
-    return createErrorResponse("Internal server error");
+    console.error('Error in SOPs POST:', error);
+    return NextResponse.json({ 
+      success: false, 
+      message: 'Internal server error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 });
   }
 }

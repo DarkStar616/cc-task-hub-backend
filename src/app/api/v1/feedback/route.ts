@@ -16,6 +16,8 @@ import {
 import { logAuditEntry, SENSITIVE_ACTIONS } from "@/utils/audit-log";
 
 // GET /api/v1/feedback - List feedback
+import { getDepartmentId, getDepartmentName } from '@/utils/department-mapping';
+
 export async function GET(request: NextRequest) {
   try {
     const authContext = await getAuthContext(request);

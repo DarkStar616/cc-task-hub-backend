@@ -164,3 +164,58 @@ export function createErrorResponse(message: string, status: number = 500) {
     headers: { "Content-Type": "application/json" },
   });
 }
+
+export function extractUserIdFromToken(token: string): string | null {
+  try {
+    // Simple JWT decode - in production, verify signature
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+
+    const payload = JSON.parse(jsonPayload);
+    return payload.sub || null;
+  } catch (error) {
+    console.error('Error extracting user ID from token:', error);
+    return null;
+  }
+}
+
+/**
+ * Validate that email belongs to @cootclub.com domain
+ */
+export function validateCootClubEmail(email: string): boolean {
+  return email.endsWith('@cootclub.com');
+}
+
+/**
+ * Validate email format
+ */
+export function validateEmailFormat(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  return emailRegex.test(email);
+}
+
+/**
+ * Validate password strength
+ */
+export function validatePasswordStrength(password: string): { isValid: boolean; message?: string } {
+  if (password.length < 8) {
+    return { isValid: false, message: 'Password must be at least 8 characters long' };
+  }
+
+  if (!/(?=.*[a-z])/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one lowercase letter' };
+  }
+
+  if (!/(?=.*[A-Z])/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one uppercase letter' };
+  }
+
+  if (!/(?=.*\d)/.test(password)) {
+    return { isValid: false, message: 'Password must contain at least one number' };
+  }
+
+  return { isValid: true };
+}

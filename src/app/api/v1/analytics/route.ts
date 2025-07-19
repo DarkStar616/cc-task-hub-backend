@@ -10,6 +10,16 @@ import {
 } from "@/utils/auth";
 import { analyticsQuerySchema, validateQueryParams } from "@/utils/validation";
 
+// Department ID mapping
+const departmentIdMap = {
+  'Maintenance': 'dept_001',
+  'Housekeeping': 'dept_002',
+  'Front-of-House': 'dept_003',
+  'Activities': 'dept_004',
+  'Operations': 'dept_005',
+  'Grounds': 'dept_006'
+};
+
 // GET /api/v1/analytics - Get analytics data (Admin/God only)
 export async function GET(request: NextRequest) {
   try {
