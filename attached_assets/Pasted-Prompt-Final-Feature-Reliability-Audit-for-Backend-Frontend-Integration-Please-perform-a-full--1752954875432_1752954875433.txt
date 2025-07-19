@@ -1,0 +1,68 @@
+Prompt: Final Feature & Reliability Audit for Backend–Frontend Integration
+
+Please perform a full-feature and reliability audit on the combined backend and frontend codebases, referencing the contracts and expectations detailed in the attached files ([Front-End-Backend-Expectations.md] and [Back-End-Code-Review-Replit-Agent.md]). For each item, verify actual implementation, identify coverage gaps, and ensure error logging and observability are in place.
+
+1. Core Feature Verification
+For all business domains (User Management, Auth, Tasks, SOPs, Reminders, Feedback, Clock, Analytics, Search, Calendar):
+
+List each feature and ensure there are compliant, contract-matching endpoints.
+
+Confirm correct business logic, data validation, role/department filtering, and enum/payload alignment as required by the frontend contract.
+
+Explicitly check task status support for "pending", "in-progress", "completed", and "overdue".
+
+2. API Compliance and Schema Alignment
+Cross-check endpoint availability, HTTP methods, paths, status codes, request/response shapes, error/success envelope formats, and model field names/types.
+
+Confirm that all data returned matches frontend interface contracts for all major models (User, Task, Reminder, ClockSession, etc.).
+
+Validate department mapping, role-based access, and correct use of query/body params.
+
+3. Authentication and Security
+Ensure Supabase JWT authentication is enforced on all protected endpoints.
+
+Validate role-based access control and department restrictions for all business data.
+
+Confirm @cootclub.com domain enforcement for registration and correct error responses on failed auth.
+
+Check rate limiting, input validation coverage, and CORS configuration.
+
+4. Error Logging and Monitoring
+Error Logging: Confirm Sentry (or equivalent) error logging is integrated and active in both backend and frontend:
+
+Uncaught exceptions, 5xx errors, and critical issues are reported.
+
+Production Sentry DSN is properly set in environment variables.
+
+Simulate an intentional server error and verify it appears in the Sentry dashboard.
+
+Review backend and frontend code for any places errors may not be caught/reported.
+
+Confirm audit logs are written for critical business/user actions.
+
+5. Health Checks & Observability
+Confirm /api/v1/health (or similar) is implemented and reports backend status, timestamp, and dependency health.
+
+Check for availability of /api/openapi or documentation endpoint.
+
+Validate that log aggregation and monitoring are enabled for operations.
+
+6. Testing Coverage
+Check that automated API/integration/E2E test suites cover all endpoints and major user flows.
+
+Confirm that all manual “smoke test” flows (auth, CRUD, department, bulk actions, error cases) pass using live backend.
+
+7. Deployment Readiness
+Ensure all environment variables (including NEXT_PUBLIC_API_BASE_URL, Supabase keys, Sentry DSNs, etc.) are correct in both backend and frontend.
+
+Confirm no mock/demo/legacy data or direct Supabase table queries remain in frontend.
+
+Verify rollback and monitoring plans are in place for production deployment.
+
+For the output:
+
+Provide a colored/compliance table or checklist for each area (PASS/FAIL/PARTIAL).
+
+List and prioritize any uncovered gaps, errors, or missing features, and reference the files/lines to address.
+
+Clearly state if the project is ready for production, or list final TODOs to reach full readiness.
