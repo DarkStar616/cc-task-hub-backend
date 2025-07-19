@@ -1,6 +1,7 @@
 import { createClient } from "../../supabase/server";
 import { NextRequest } from "next/server";
 import { Database } from "@/types/supabase";
+import { logError } from "@/utils/sentry";
 
 type UserRole = "God" | "Admin" | "Manager" | "User" | "Guest";
 
@@ -155,6 +156,11 @@ export function createSuccessResponse(data: any, status: number = 200, message?:
 }
 
 export function createErrorResponse(message: string, status: number = 500) {
+  // Log critical errors to monitoring
+  if (status >= 500) {
+    logError(new Error(message), { status, type: 'server_error' });
+  }
+
   return new Response(JSON.stringify({
     success: false,
     error: message,
