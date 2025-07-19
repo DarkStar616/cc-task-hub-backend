@@ -1,0 +1,66 @@
+SUBJECT:
+Align backend API to frontend contract – deep compliance audit & action roadmap
+
+INSTRUCTIONS:
+You are to perform a structured, endpoint-by-endpoint compliance audit of this backend against the following frontend contract/expectations (see summary below). Your tasks:
+
+Analyze every API endpoint, method, and path implemented in the backend.
+
+For each endpoint:
+
+Compare path, HTTP verb, and parameter placement to what is expected in the frontend.
+
+For requests: Compare body and query parameter shapes (field names, types, required/optional).
+
+For responses: Check success pattern ({success: true, message, data}), error envelope, and payload shape versus TypeScript interfaces expected by the frontend.
+
+Note any differences in naming, nesting, date or enum formatting, etc.
+
+Authentication and authorization:
+
+Verify Supabase JWT validation and enforcement for all protected endpoints.
+
+Ensure role-based access and department filtering matches the provided permission matrix.
+
+Confirm @cootclub.com email restriction on registration.
+
+Business rules, filtering, and logic:
+
+Audit department filtering, bulk endpoint behavior, and any analytics or search functionality to ensure correct default scoping and aggregation.
+
+Check that department and role IDs, mapping, and names exactly match frontend expectations.
+
+Special features and behaviors:
+
+File upload (SOPs) must support multipart/form-data, correct file types and size restrictions, and store in Supabase Storage.
+
+Real-time: Note which parts of the backend implement real-time updates. Flag any areas where WebSocket/events/broadcasts are missing and the frontend expects push updates.
+
+Error/success response codes: Ensure all endpoints use only the HTTP status codes and error/success envelope expected by the frontend.
+
+All other “Special Frontend Behaviors” as detailed below.
+
+Requirements Source:
+(Paste the “Core API Endpoints Catalog,” “Response Patterns,” and other requirement details—direct from your frontend summary above or the Front-End-Backend-Expectations.md file.)
+
+DELIVERABLE:
+
+For every endpoint (grouped by resource/domain), provide:
+
+Match/mismatch against contract (table format, green/red for pass/fail).
+
+For mismatches, precisely state what changes are needed (e.g. “Rename field X in response”, “Wrap response in {success: true, ...}”, “Change endpoint from /api/v1/clock_sessions to /api/v1/clock/sessions”, “Add missing department filtering”).
+
+Identify all error handling and payload mismatches.
+
+For real-time and advanced features, state what needs to be built or fixed for full frontend parity.
+
+Produce a prioritized developer TODO/action list for full contract compliance.
+
+Indicate if any changes would risk current data or require nontrivial refactoring.
+
+ADDITIONAL CONTEXT:
+
+The backend must map 1:1 to frontend expectation for all endpoints, including authentication patterns, data shapes, and hierarchical role permissioning.
+
+If in doubt, the frontend contract is the source of truth for all interface and behavior questions.
