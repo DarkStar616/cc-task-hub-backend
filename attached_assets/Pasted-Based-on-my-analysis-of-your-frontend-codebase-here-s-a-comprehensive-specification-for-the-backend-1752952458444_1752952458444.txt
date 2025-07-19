@@ -1,0 +1,222 @@
+Based on my analysis of your frontend codebase, here's a comprehensive specification for the backend API that must be implemented to work seamlessly with your current frontend:
+
+Core API Endpoints Catalog
+1. Authentication Endpoints (/api/v1/auth)
+POST /api/v1/auth/login
+
+Request: { email: string, password: string }
+Success Response: { user: User, session: Session }
+Error Response: { error: string, code?: string }
+Status Codes: 200 (success), 401 (invalid credentials), 400 (validation error)
+POST /api/v1/auth/register
+
+Request: { email: string, password: string, full_name?: string }
+Success Response: { message: string, user?: User }
+Error Response: { error: string, code?: string }
+Validation: Email must end with @cootclub.com
+POST /api/v1/auth/logout
+
+Request: None
+Success Response: { message: string }
+2. Users Endpoints (/api/v1/users)
+GET /api/v1/users
+
+Query Params: department?: string
+Response: { users: User[] }
+User Interface:
+interface User {
+  id: string
+  email: string
+  full_name: string | null
+  role: 'god' | 'admin' | 'manager' | 'user' | 'guest'
+  department: string | null
+  avatar_url: string | null
+  created_at: string
+  updated_at: string
+}
+GET /api/v1/users/admin
+
+Authorization: Admin+ role required
+Response: Admin-specific user data
+3. Tasks Endpoints (/api/v1/tasks)
+GET /api/v1/tasks
+
+Query Params:
+department?: string
+search?: string
+status?: TaskStatus
+priority?: TaskPriority
+assigned_to?: string
+page?: number
+limit?: number
+Response: { tasks: Task[], total: number, page: number }
+POST /api/v1/tasks
+
+Request:
+{
+  title: string
+  description?: string
+  priority: 'low' | 'medium' | 'high' | 'urgent'
+  due_date?: string // ISO datetime
+  assigned_to: string[] // Array of user IDs
+  department_id: string
+  tags?: string[]
+}
+Response: { task: Task }
+PUT /api/v1/tasks/:id
+
+Request: Partial Task object
+Response: { task: Task }
+DELETE /api/v1/tasks/:id
+
+Response: { message: string }
+PATCH /api/v1/tasks/:id/complete
+
+Response: { task: Task }
+POST /api/v1/tasks/bulk-complete
+
+Request: { task_ids: string[] }
+Response: { updated_count: number, tasks: Task[] }
+POST /api/v1/tasks/bulk-delete
+
+Request: { task_ids: string[] }
+Response: { deleted_count: number }
+4. SOPs Endpoints (/api/v1/sops)
+GET /api/v1/sops
+
+Query Params: department?: string, search?: string
+Response: { sops: SOP[] }
+POST /api/v1/sops
+
+Request: FormData with file and metadata
+Response: { sop: SOP }
+SOP Interface:
+
+interface SOP {
+  id: string
+  title: string
+  description?: string
+  department_id: string
+  file_url: string
+  file_name: string
+  file_size: number
+  uploaded_by: string
+  tags: string[]
+  version: string
+  status: 'active' | 'archived'
+  created_at: string
+  updated_at: string
+}
+5. Clock Sessions Endpoints (/api/v1/clock)
+GET /api/v1/clock/sessions
+
+Query Params: user_id?: string, start_date?: string, end_date?: string
+Response:
+{
+  sessions: ClockSession[]
+  current_session?: ClockSession
+  total_hours_today: number
+}
+POST /api/v1/clock/sessions
+
+Request: { action: 'clock_in' | 'clock_out' }
+Response: { session: ClockSession }
+6. Analytics Endpoints (/api/v1/analytics)
+GET /api/v1/analytics
+
+Authorization: Admin+ role required
+Query Params: period_start?: string, period_end?: string
+Response: Aggregated analytics data
+7. Reminders Endpoints (/api/v1/reminders)
+GET /api/v1/reminders
+
+Response: { reminders: Reminder[] }
+POST /api/v1/reminders
+
+Request:
+{
+  title: string
+  description?: string
+  time: string // HH:MM format
+  recurrence: 'daily' | 'weekdays' | 'custom'
+  channels: string[] // ['email', 'notification']
+}
+8. Calendar Endpoints (/api/v1/calendar)
+GET /api/v1/calendar/events
+
+Query Params: start?: string, end?: string, department?: string
+Response: { events: CalendarEvent[] }
+Authentication Flow Requirements
+JWT Token Handling
+Frontend sends Authorization: Bearer <token> header
+Backend validates Supabase JWT tokens
+Token refresh handled automatically by Supabase client
+Role-Based Access Control
+type UserRole = 'god' | 'admin' | 'manager' | 'user' | 'guest'
+Permission Matrix:
+
+God: All access
+Admin: All except god-only functions
+Manager: Department-wide access + team management
+User: Own data + assigned tasks
+Guest: Read-only limited access
+Department-Based Filtering
+All endpoints that return department-specific data must respect department query parameter
+Users can only access data from their assigned department (unless Admin+)
+Department IDs must match predefined values: dept_001 through dept_006
+Error Response Envelope
+Standard Error Format:
+
+{
+  error: string // Human-readable error message
+  code?: string // Machine-readable error code
+  details?: any // Additional error context
+  timestamp?: string // ISO datetime
+}
+HTTP Status Codes:
+
+200: Success
+201: Created
+400: Bad Request (validation errors)
+401: Unauthorized (authentication required)
+403: Forbidden (insufficient permissions)
+404: Not Found
+409: Conflict (duplicate data)
+422: Unprocessable Entity (business logic error)
+500: Internal Server Error
+Success Response Envelope
+Standard Success Format:
+
+{
+  data?: any // Response payload
+  message?: string // Success message
+  meta?: {
+    total?: number
+    page?: number
+    limit?: number
+    timestamp?: string
+  }
+}
+Special Frontend Behaviors
+Department Filtering
+Frontend automatically appends ?department=<name> to API calls
+Backend must filter results based on user's department unless they're Admin+
+Department names: "Maintenance", "Housekeeping", "Front-of-House", "Activities", "Operations", "Grounds"
+Bulk Operations
+Task bulk complete/delete operations expect array of task IDs
+Must return count of affected records
+Should handle partial failures gracefully
+Real-time Updates
+Frontend expects WebSocket or Server-Sent Events for real-time task updates
+Clock session changes should broadcast to team members
+Notification system for reminders and task assignments
+File Upload Expectations
+SOPs upload expects multipart/form-data
+Maximum file size: 5MB (configurable via env var)
+Allowed file types: PDF, DOC, DOCX
+Files stored in Supabase Storage with proper RLS policies
+Search Functionality
+Global search endpoint /api/v1/search with query parameter
+Should search across tasks, SOPs, and users
+Results grouped by type with relevance scoring
+This specification ensures your backend will integrate seamlessly with the existing frontend architecture, maintaining all expected behaviors and data structures.
