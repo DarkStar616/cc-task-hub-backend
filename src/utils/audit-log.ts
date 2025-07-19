@@ -83,12 +83,14 @@ export const SENSITIVE_ACTIONS = {
   USER_ROLE_CHANGE: "user_role_change",
   USER_DEPARTMENT_CHANGE: "user_department_change",
   TASK_ASSIGNMENT: "task_assignment",
-  TASK_COMPLETION: "task_completion",
-  SOP_CREATION: "sop_creation",
-  SOP_UPDATE: "sop_update",
-  CLOCK_IN: "clock_in",
-  CLOCK_OUT: "clock_out",
-  FEEDBACK_CREATION: "feedback_creation",
+  SOP_ACCESS: "sop_access",
+  ADMIN_ACCESS: "admin_access",
+  PASSWORD_RESET: "password_reset",
+  BULK_OPERATION: "bulk_operation",
+  BULK_TASK_UPDATE: "bulk_task_update",
+  BULK_TASK_DELETE: "bulk_task_delete",
+  FILE_UPLOAD: "file_upload",
+  ANALYTICS_ACCESS: "analytics_access",
 } as const;
 
 export type SensitiveAction =

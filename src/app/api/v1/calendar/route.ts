@@ -1,15 +1,21 @@
 
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { getUserFromRequest, hasRole } from "@/utils/auth";
-import { createSuccessResponse, createErrorResponse } from "@/utils/response";
-import { mapDepartmentNameToId } from "@/utils/department-mapping";
+import {
+  getAuthContext,
+  hasRole,
+  createUnauthorizedResponse,
+  createBadRequestResponse,
+  createSuccessResponse,
+  createErrorResponse,
+} from "@/utils/auth";
+import { logSensitiveAction, SENSITIVE_ACTIONS } from "@/utils/audit-log";
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getUserFromRequest(request);
-    if (!authResult.success) {
-      return createErrorResponse(authResult.message, 401);
+    const authContext = await getAuthContext(request);
+
+    if (!authContext.user) {
+      return createUnauthorizedResponse();
     }
 
     const { searchParams } = new URL(request.url);
@@ -18,23 +24,11 @@ export async function GET(request: NextRequest) {
     const department = searchParams.get("department");
 
     if (!start || !end) {
-      return createErrorResponse("Start and end dates are required", 400);
-    }
-
-    const supabase = createClient();
-    const user = authResult.user;
-
-    // Department filtering
-    let departmentId = null;
-    if (department && department !== "All Departments") {
-      departmentId = mapDepartmentNameToId(department);
-      if (!departmentId) {
-        return createErrorResponse("Invalid department", 400);
-      }
+      return createBadRequestResponse("Start and end dates are required");
     }
 
     // Get tasks with due dates in the specified range
-    let tasksQuery = supabase
+    let tasksQuery = authContext.supabase
       .from("tasks")
       .select(`
         id,
@@ -43,52 +37,63 @@ export async function GET(request: NextRequest) {
         status,
         priority,
         due_date,
-        department,
-        owner:profiles!tasks_owner_id_fkey(id, name, avatar),
-        assignees:task_assignments(
-          assignee:profiles!task_assignments_user_id_fkey(id, name, avatar)
-        )
+        department_id,
+        assigned_to,
+        created_by,
+        created_user:users!tasks_created_by_fkey(full_name),
+        assigned_user:users!tasks_assigned_to_fkey(full_name),
+        department:departments(name)
       `)
       .gte("due_date", start)
       .lte("due_date", end)
       .not("due_date", "is", null)
       .order("due_date", { ascending: true });
 
-    // Apply department filtering
-    if (departmentId) {
-      tasksQuery = tasksQuery.eq("department_id", departmentId);
-    } else if (!hasRole(user, ["god", "admin"])) {
-      // Non-admin users see only their department
-      const userDeptId = mapDepartmentNameToId(user.department);
-      if (userDeptId) {
-        tasksQuery = tasksQuery.eq("department_id", userDeptId);
+    // Apply role-based filtering
+    if (hasRole(authContext.user.role, ["God", "Admin"])) {
+      // God and Admin can see all tasks
+    } else if (hasRole(authContext.user.role, ["Manager"])) {
+      // Managers can see department tasks
+      if (authContext.user.department_id) {
+        tasksQuery = tasksQuery.eq("department_id", authContext.user.department_id);
       }
+    } else {
+      // Users can see tasks assigned to them or created by them
+      tasksQuery = tasksQuery.or(
+        `assigned_to.eq.${authContext.user.id},created_by.eq.${authContext.user.id}`,
+      );
+    }
+
+    // Apply department filter
+    if (department && hasRole(authContext.user.role, ["God", "Admin", "Manager"])) {
+      tasksQuery = tasksQuery.eq("department_id", department);
     }
 
     const { data: tasks, error: tasksError } = await tasksQuery;
 
     if (tasksError) {
-      console.error("Tasks fetch error:", tasksError);
-      return createErrorResponse("Failed to fetch calendar tasks", 500);
+      console.error("Calendar tasks fetch error:", tasksError);
+      return createErrorResponse("Failed to fetch calendar tasks");
     }
 
     // Get reminders in the specified range
-    let remindersQuery = supabase
+    let remindersQuery = authContext.supabase
       .from("reminders")
-      .select("id, text, time, recurrence, is_active, created_at")
-      .gte("time", start)
-      .lte("time", end);
+      .select("id, title, message, scheduled_for, status, reminder_type, task_id")
+      .gte("scheduled_for", start)
+      .lte("scheduled_for", end)
+      .order("scheduled_for", { ascending: true });
 
     // Filter reminders by user unless admin
-    if (!hasRole(user, ["god", "admin"])) {
-      remindersQuery = remindersQuery.eq("user_id", user.id);
+    if (!hasRole(authContext.user.role, ["God", "Admin"])) {
+      remindersQuery = remindersQuery.eq("user_id", authContext.user.id);
     }
 
     const { data: reminders, error: remindersError } = await remindersQuery;
 
     if (remindersError) {
-      console.error("Reminders fetch error:", remindersError);
-      return createErrorResponse("Failed to fetch calendar reminders", 500);
+      console.error("Calendar reminders fetch error:", remindersError);
+      return createErrorResponse("Failed to fetch calendar reminders");
     }
 
     // Format events for calendar
@@ -100,28 +105,35 @@ export async function GET(request: NextRequest) {
         start: task.due_date,
         status: task.status,
         priority: task.priority,
-        department: task.department,
-        owner: task.owner,
-        assignees: task.assignees?.map((a: any) => a.assignee) || []
+        department_id: task.department_id,
+        department: task.department?.name,
+        created_user: task.created_user?.full_name,
+        assigned_user: task.assigned_user?.full_name,
       })),
       ...(reminders || []).map((reminder: any) => ({
         id: reminder.id,
-        title: reminder.text,
+        title: reminder.title,
         type: "reminder",
-        start: reminder.time,
-        recurrence: reminder.recurrence,
-        is_active: reminder.is_active
+        start: reminder.scheduled_for,
+        status: reminder.status,
+        reminder_type: reminder.reminder_type,
+        task_id: reminder.task_id,
       }))
     ];
 
-    return createSuccessResponse("Calendar data retrieved successfully", {
-      events,
-      period: { start, end },
-      total_events: events.length
-    });
+    return createSuccessResponse(
+      {
+        events,
+        period: { start, end },
+        total_events: events.length,
+        department_filter: department,
+      },
+      200,
+      "Calendar data retrieved successfully"
+    );
 
   } catch (error) {
     console.error("Calendar error:", error);
-    return createErrorResponse("Failed to retrieve calendar data", 500);
+    return createErrorResponse("Failed to retrieve calendar data");
   }
 }

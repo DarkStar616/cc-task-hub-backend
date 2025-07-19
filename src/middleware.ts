@@ -1,95 +1,61 @@
-
-import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
-
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error('Missing Supabase environment variables');
-    if (req.nextUrl.pathname.startsWith('/api/')) {
-      return new Response(
-        JSON.stringify({ error: "Configuration error" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-    return res;
-  }
-
+export async function middleware(request: NextRequest) {
   try {
-    const supabase = createServerClient(
-      supabaseUrl,
-      supabaseAnonKey,
-      {
-        cookies: {
-          getAll() {
-            return req.cookies.getAll().map(({ name, value }) => ({
-              name,
-              value,
-            }))
-          },
-          setAll(cookiesToSet) {
-            cookiesToSet.forEach(({ name, value, options }) => {
-              req.cookies.set(name, value)
-              res.cookies.set(name, value, options)
-            })
-          },
-        },
+    // Get the auth token from the request
+    const token = request.headers.get('authorization')?.replace('Bearer ', '') ||
+                 request.cookies.get('sb-access-token')?.value
+
+    // For API routes, validate the token if present
+    if (request.nextUrl.pathname.startsWith('/api/v1/')) {
+      // Allow health check and OpenAPI docs without auth
+      if (request.nextUrl.pathname === '/api/v1/health' || 
+          request.nextUrl.pathname === '/api/openapi') {
+        return NextResponse.next()
       }
-    )
 
-    // For API routes, add session info to headers if available
-    if (req.nextUrl.pathname.startsWith('/api/')) {
-      try {
-        const { data: { session }, error } = await supabase.auth.getSession()
-        
-        if (session && !error) {
-          res.headers.set('x-user-id', session.user.id);
-          res.headers.set('x-user-email', session.user.email || '');
-        }
-      } catch (error) {
-        console.error('Auth session error in middleware:', error);
+      // For all other API routes, require valid auth
+      if (!token) {
+        return NextResponse.json({
+          success: false,
+          message: 'Authentication required',
+          error: 'Missing authorization token'
+        }, { status: 401 })
       }
-      
-      return res;
+
+      // Validate token with Supabase
+      const supabase = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.SUPABASE_SERVICE_KEY!
+      )
+
+      const { data: { user }, error } = await supabase.auth.getUser(token)
+
+      if (error || !user) {
+        return NextResponse.json({
+          success: false,
+          message: 'Invalid authentication token',
+          error: 'Token validation failed'
+        }, { status: 401 })
+      }
+
+      // Add user info to headers for the API route
+      const response = NextResponse.next()
+      response.headers.set('x-user-id', user.id)
+      response.headers.set('x-user-email', user.email || '')
+      return response
     }
 
-    // For non-API routes, handle redirects
-    const { data: { session } } = await supabase.auth.getSession()
-
-    // If user is signed in and the current path is / redirect to /dashboard
-    if (session && req.nextUrl.pathname === "/") {
-      return NextResponse.redirect(new URL("/dashboard", req.url));
-    }
-
-    // If user is not signed in and the current path is /dashboard redirect to /
-    if (!session && req.nextUrl.pathname === "/dashboard") {
-      return NextResponse.redirect(new URL("/", req.url));
-    }
-
-    return res;
+    return NextResponse.next()
   } catch (error) {
-    console.error('Middleware error:', error);
-    
-    // For API routes, return JSON error
-    if (req.nextUrl.pathname.startsWith('/api/')) {
-      return new Response(
-        JSON.stringify({ error: "Internal server error" }),
-        {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }
-      );
-    }
-    
-    return res;
+    console.error('Middleware error:', error)
+    return NextResponse.json({
+      success: false,
+      message: 'Authentication middleware error',
+      error: error instanceof Error ? error.message : 'Unknown error'
+    }, { status: 500 })
   }
 }
 

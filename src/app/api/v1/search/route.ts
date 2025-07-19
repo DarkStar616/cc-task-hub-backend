@@ -1,15 +1,20 @@
 
 import { NextRequest } from "next/server";
-import { createClient } from "@/utils/supabase/server";
-import { getUserFromRequest, hasRole } from "@/utils/auth";
-import { createSuccessResponse, createErrorResponse } from "@/utils/response";
-import { mapDepartmentNameToId } from "@/utils/department-mapping";
+import {
+  getAuthContext,
+  hasRole,
+  createUnauthorizedResponse,
+  createBadRequestResponse,
+  createSuccessResponse,
+  createErrorResponse,
+} from "@/utils/auth";
 
 export async function GET(request: NextRequest) {
   try {
-    const authResult = await getUserFromRequest(request);
-    if (!authResult.success) {
-      return createErrorResponse(authResult.message, 401);
+    const authContext = await getAuthContext(request);
+
+    if (!authContext.user) {
+      return createUnauthorizedResponse();
     }
 
     const { searchParams } = new URL(request.url);
@@ -19,40 +24,51 @@ export async function GET(request: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "50");
 
     if (!query.trim()) {
-      return createErrorResponse("Search query is required", 400);
+      return createBadRequestResponse("Search query is required");
     }
 
-    const supabase = createClient();
-    const user = authResult.user;
     const results: any = {};
-
-    // Department filtering
-    let departmentId = null;
-    if (department && department !== "All Departments") {
-      departmentId = mapDepartmentNameToId(department);
-      if (!departmentId) {
-        return createErrorResponse("Invalid department", 400);
-      }
-    }
 
     // Search tasks
     if (!type || type === "tasks" || type === "all") {
-      let tasksQuery = supabase
+      let tasksQuery = authContext.supabase
         .from("tasks")
-        .select("id, title, description, status, priority, due_date, department")
+        .select(`
+          id,
+          title,
+          description,
+          status,
+          priority,
+          due_date,
+          department_id,
+          assigned_to,
+          created_by,
+          created_user:users!tasks_created_by_fkey(full_name),
+          assigned_user:users!tasks_assigned_to_fkey(full_name),
+          department:departments(name)
+        `)
         .or(`title.ilike.%${query}%,description.ilike.%${query}%`)
         .order("created_at", { ascending: false })
         .limit(type === "all" ? 10 : limit);
 
-      // Apply department filtering
-      if (departmentId) {
-        tasksQuery = tasksQuery.eq("department_id", departmentId);
-      } else if (!hasRole(user, ["god", "admin"])) {
-        // Non-admin users see only their department
-        const userDeptId = mapDepartmentNameToId(user.department);
-        if (userDeptId) {
-          tasksQuery = tasksQuery.eq("department_id", userDeptId);
+      // Apply role-based filtering
+      if (hasRole(authContext.user.role, ["God", "Admin"])) {
+        // God and Admin can search all tasks
+      } else if (hasRole(authContext.user.role, ["Manager"])) {
+        // Managers can search department tasks
+        if (authContext.user.department_id) {
+          tasksQuery = tasksQuery.eq("department_id", authContext.user.department_id);
         }
+      } else {
+        // Users can search tasks assigned to them or created by them
+        tasksQuery = tasksQuery.or(
+          `assigned_to.eq.${authContext.user.id},created_by.eq.${authContext.user.id}`,
+        );
+      }
+
+      // Apply department filter
+      if (department && hasRole(authContext.user.role, ["God", "Admin", "Manager"])) {
+        tasksQuery = tasksQuery.eq("department_id", department);
       }
 
       const { data: tasks } = await tasksQuery;
@@ -61,21 +77,43 @@ export async function GET(request: NextRequest) {
 
     // Search SOPs
     if (!type || type === "sops" || type === "all") {
-      let sopsQuery = supabase
+      let sopsQuery = authContext.supabase
         .from("sops")
-        .select("id, title, content, department, created_at")
-        .or(`title.ilike.%${query}%,content.ilike.%${query}%`)
+        .select(`
+          id,
+          title,
+          description,
+          content,
+          department_id,
+          status,
+          tags,
+          created_at,
+          updated_at,
+          created_user:users!sops_created_by_fkey(full_name),
+          department:departments(name)
+        `)
+        .or(`title.ilike.%${query}%,description.ilike.%${query}%,content.ilike.%${query}%`)
         .order("created_at", { ascending: false })
         .limit(type === "all" ? 10 : limit);
 
-      // Apply department filtering
-      if (departmentId) {
-        sopsQuery = sopsQuery.eq("department_id", departmentId);
-      } else if (!hasRole(user, ["god", "admin"])) {
-        const userDeptId = mapDepartmentNameToId(user.department);
-        if (userDeptId) {
-          sopsQuery = sopsQuery.eq("department_id", userDeptId);
+      // Apply role-based filtering
+      if (hasRole(authContext.user.role, ["God", "Admin"])) {
+        // God and Admin can search all SOPs
+      } else if (hasRole(authContext.user.role, ["Manager"])) {
+        // Managers can search department SOPs
+        if (authContext.user.department_id) {
+          sopsQuery = sopsQuery.eq("department_id", authContext.user.department_id);
         }
+      } else {
+        // Users can search SOPs in their department
+        if (authContext.user.department_id) {
+          sopsQuery = sopsQuery.eq("department_id", authContext.user.department_id);
+        }
+      }
+
+      // Apply department filter
+      if (department && hasRole(authContext.user.role, ["God", "Admin", "Manager"])) {
+        sopsQuery = sopsQuery.eq("department_id", department);
       }
 
       const { data: sops } = await sopsQuery;
@@ -83,30 +121,50 @@ export async function GET(request: NextRequest) {
     }
 
     // Search users (admin only)
-    if (hasRole(user, ["god", "admin"]) && (!type || type === "users" || type === "all")) {
-      let usersQuery = supabase
-        .from("profiles")
-        .select("id, name, email, department, role")
-        .or(`name.ilike.%${query}%,email.ilike.%${query}%`)
-        .order("name", { ascending: true })
+    if (hasRole(authContext.user.role, ["God", "Admin"]) && (!type || type === "users" || type === "all")) {
+      let usersQuery = authContext.supabase
+        .from("users")
+        .select(`
+          id,
+          full_name,
+          email,
+          department_id,
+          role,
+          created_at,
+          department:departments(name)
+        `)
+        .or(`full_name.ilike.%${query}%,email.ilike.%${query}%`)
+        .order("full_name", { ascending: true })
         .limit(type === "all" ? 10 : limit);
 
-      if (departmentId) {
-        usersQuery = usersQuery.eq("department_id", departmentId);
+      // Apply department filter
+      if (department) {
+        usersQuery = usersQuery.eq("department_id", department);
       }
 
       const { data: users } = await usersQuery;
       results.users = users || [];
     }
 
-    return createSuccessResponse("Search completed successfully", {
-      query,
-      results,
-      total_results: Object.values(results).reduce((sum: number, arr: any) => sum + (arr?.length || 0), 0)
-    });
+    const totalResults = Object.values(results).reduce(
+      (sum: number, arr: any) => sum + (arr?.length || 0),
+      0
+    );
+
+    return createSuccessResponse(
+      {
+        query,
+        results,
+        total_results: totalResults,
+        search_type: type || "all",
+        department_filter: department,
+      },
+      200,
+      "Search completed successfully"
+    );
 
   } catch (error) {
     console.error("Search error:", error);
-    return createErrorResponse("Search failed", 500);
+    return createErrorResponse("Search failed");
   }
 }
