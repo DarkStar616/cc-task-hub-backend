@@ -1,10 +1,3 @@
-` tags.
-
-```
-Removing "urgent" from the TASK_PRIORITIES array to match the frontend's expected values.
-```
-
-<replit_final_file>
 import { z } from "zod";
 
 // User validation schemas
@@ -71,7 +64,7 @@ export const updateTaskSchema = z.object({
   sop_id: z.string().uuid().optional(),
   priority: z.enum(["low", "medium", "high"]).optional(),
   status: z
-    .enum(["pending", "in_progress", "completed", "cancelled"])
+    .enum(["pending", "in_progress", "completed", "cancelled", "overdue"])
     .optional(),
   due_date: z.string().datetime().optional(),
   estimated_duration: z.string().optional(),

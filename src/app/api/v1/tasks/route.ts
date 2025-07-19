@@ -192,3 +192,8 @@ export async function POST(request: NextRequest) {
     return createErrorResponse("Internal server error");
   }
 }
+
+// Validate status
+    if (status && !["pending", "in-progress", "completed", "overdue"].includes(status)) {
+      return createErrorResponse("Invalid status", 400);
+    }
