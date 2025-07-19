@@ -855,7 +855,10 @@ const openApiSpec = {
 
 export async function GET(request: NextRequest) {
   try {
-    return new Response(JSON.stringify(openApiSpec), {
+    // Validate that openApiSpec is valid JSON
+    const specString = JSON.stringify(openApiSpec);
+    
+    return new Response(specString, {
       status: 200,
       headers: { 
         "Content-Type": "application/json",
@@ -865,7 +868,11 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("OpenAPI spec error:", error);
     return new Response(
-      JSON.stringify({ error: "Failed to generate OpenAPI specification" }),
+      JSON.stringify({ 
+        success: false,
+        error: "Failed to generate OpenAPI specification",
+        message: "OpenAPI specification could not be generated"
+      }),
       {
         status: 500,
         headers: { "Content-Type": "application/json" },

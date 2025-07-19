@@ -85,7 +85,9 @@ export async function GET(request: NextRequest) {
       // Validate status parameter
       const validStatuses = ["pending", "in_progress", "completed", "cancelled", "overdue"];
       if (!validStatuses.includes(status)) {
-        return createBadRequestResponse("Invalid status parameter");
+        return createBadRequestResponse(
+          `Invalid status parameter. Valid statuses are: ${validStatuses.join(", ")}`
+        );
       }
       query = query.eq("status", status);
     }
