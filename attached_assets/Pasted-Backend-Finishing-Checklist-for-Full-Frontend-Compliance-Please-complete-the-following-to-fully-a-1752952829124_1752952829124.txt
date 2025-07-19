@@ -1,0 +1,53 @@
+Backend Finishing Checklist for Full Frontend Compliance
+
+Please complete the following to fully align the backend with the "Front-End-Backend-Expectations.md" contract and the frontend integration layer:
+
+1. Standardize Response Format
+Ensure all remaining endpoints (especially SOPs, analytics, reminders, and any legacy or secondary endpoints) use the standard response envelope:
+
+Success:
+{ success: true, message: string, data?: any }
+
+Error:
+{ success: false, message: string, error?: string }
+
+2. Implement/Verify Department ID Mapping
+Everywhere a department value is required in request or response, convert between department names and IDs according to:
+
+text
+{
+  Maintenance: "dept_001",
+  Housekeeping: "dept_002",
+  "Front-of-House": "dept_003",
+  Activities: "dept_004",
+  Operations: "dept_005",
+  Grounds: "dept_006"
+}
+Make sure all filters, payloads, and query responses use this mapping consistently.
+
+3. Department-Based Filtering and Authorization
+Confirm that department-scoped endpoints (users, tasks, sops, analytics, reminders, etc.) only expose or accept data for the user’s department, unless the user is Admin+.
+
+Ensure “All Departments” handling is present for God/Admin roles.
+
+4. Field-Level Model & Enum Conformance
+Double-check that all returned and accepted objects (tasks, users, etc) exactly match frontend TypeScript/JSON interface shapes and enums (including e.g. status, priority, assignees/owner nesting, date formatting as strings).
+
+5. Final QA and Test
+Test each updated endpoint with realistic frontend calls, including:
+
+SOPs endpoints (GET/POST/PUT/DELETE)
+
+Analytics (including department query)
+
+Reminders (using role/department permissioning)
+
+Confirm expected request, response, and filtering with the running frontend.
+
+Address any discrepancies found by contract or interface tests.
+
+Report back with:
+
+Confirmation table/checklist per endpoint/domain stating done or specifying any remaining issues.
+
+Any places where strict contract compliance is infeasible, with proposed workarounds.
