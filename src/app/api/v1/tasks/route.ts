@@ -82,6 +82,11 @@ export async function GET(request: NextRequest) {
       query = query.eq("assigned_to", assignedTo);
     }
     if (status) {
+      // Validate status parameter
+      const validStatuses = ["pending", "in_progress", "completed", "cancelled", "overdue"];
+      if (!validStatuses.includes(status)) {
+        return createBadRequestResponse("Invalid status parameter");
+      }
       query = query.eq("status", status);
     }
     if (priority) {
@@ -160,7 +165,7 @@ export async function POST(request: NextRequest) {
       .insert({
         ...taskData,
         created_by: authContext.user.id,
-        status: "pending",
+        status: taskData.status || "pending",
         created_at: new Date().toISOString(),
       })
       .select()
@@ -192,8 +197,3 @@ export async function POST(request: NextRequest) {
     return createErrorResponse("Internal server error");
   }
 }
-
-// Validate status
-    if (status && !["pending", "in-progress", "completed", "overdue"].includes(status)) {
-      return createErrorResponse("Invalid status", 400);
-    }

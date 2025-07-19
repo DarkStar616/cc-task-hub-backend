@@ -149,6 +149,14 @@ export async function PUT(
       }
     }
 
+    // Handle task status changes
+    if (updateData.status) {
+      const validStatuses = ["pending", "in_progress", "completed", "cancelled", "overdue"];
+      if (!validStatuses.includes(updateData.status)) {
+        return createBadRequestResponse("Invalid status value");
+      }
+    }
+
     // Handle task completion
     if (
       updateData.status === "completed" &&

@@ -166,6 +166,28 @@ describe("Validation Utilities", () => {
         expect(result.success).toBe(false);
       });
     });
+
+    describe("updateTaskSchema", () => {
+      it("should accept overdue status", () => {
+        const taskWithOverdueStatus = {
+          title: "Update task",
+          status: "overdue",
+        };
+
+        const result = validateRequestBody(updateTaskSchema, taskWithOverdueStatus);
+        expect(result.success).toBe(true);
+      });
+
+      it("should reject invalid status", () => {
+        const taskWithInvalidStatus = {
+          title: "Update task",
+          status: "invalid-status",
+        };
+
+        const result = validateRequestBody(updateTaskSchema, taskWithInvalidStatus);
+        expect(result.success).toBe(false);
+      });
+    });
   });
 
   describe("SOP Schemas", () => {

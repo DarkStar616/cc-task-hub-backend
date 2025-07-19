@@ -60,7 +60,7 @@ const openApiSpec = {
           },
           status: {
             type: "string",
-            enum: ["pending", "in_progress", "completed", "cancelled"],
+            enum: ["pending", "in_progress", "completed", "cancelled", "overdue"],
           },
           due_date: { type: "string", format: "date-time", nullable: true },
           estimated_duration: { type: "string", nullable: true },

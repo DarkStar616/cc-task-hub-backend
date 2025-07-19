@@ -196,6 +196,35 @@ describe("/api/v1/tasks", () => {
       expect(mockQuery.eq).toHaveBeenCalledWith("status", "completed");
       expect(mockQuery.eq).toHaveBeenCalledWith("priority", "high");
     });
+
+    it("should handle overdue status filter", async () => {
+      mockRequest.url = "http://localhost:3000/api/v1/tasks?status=overdue";
+
+      const mockQuery = {
+        select: jest.fn().mockReturnThis(),
+        range: jest.fn().mockReturnThis(),
+        order: jest.fn().mockReturnThis(),
+        eq: jest.fn().mockReturnThis(),
+        or: jest.fn().mockReturnThis(),
+      };
+      mockQuery.order.mockResolvedValue({ data: [], error: null });
+
+      mockAuthContext.supabase.from.mockReturnValue(mockQuery);
+
+      await GET(mockRequest);
+
+      expect(mockQuery.eq).toHaveBeenCalledWith("status", "overdue");
+    });
+
+    it("should reject invalid status filter", async () => {
+      mockRequest.url = "http://localhost:3000/api/v1/tasks?status=invalid-status";
+
+      const response = await GET(mockRequest);
+
+      expect(mockAuthUtils.createBadRequestResponse).toHaveBeenCalledWith(
+        "Invalid status parameter"
+      );
+    });
   });
 
   describe("POST /api/v1/tasks", () => {
@@ -386,6 +415,48 @@ describe("/api/v1/tasks", () => {
 
       expect(mockAuthUtils.createErrorResponse).toHaveBeenCalledWith(
         "Failed to create task",
+      );
+    });
+
+    it("should create task with overdue status", async () => {
+      const overdueTaskData = {
+        title: "Overdue Task",
+        description: "Task that was overdue from creation",
+        status: "overdue",
+        priority: "high",
+      };
+
+      const createdTask = {
+        id: "task-overdue",
+        ...overdueTaskData,
+        created_by: "user-123",
+        created_at: expect.any(String),
+      };
+
+      mockRequest.json = jest.fn().mockResolvedValue(overdueTaskData);
+
+      // Mock validation
+      jest.doMock("@/utils/validation", () => ({
+        validateRequestBody: jest.fn().mockReturnValue({
+          success: true,
+          data: overdueTaskData,
+        }),
+      }));
+
+      const mockInsertQuery = {
+        insert: jest.fn().mockReturnThis(),
+        select: jest.fn().mockReturnThis(),
+        single: jest.fn().mockResolvedValue({ data: createdTask, error: null }),
+      };
+
+      mockAuthContext.supabase.from.mockReturnValue(mockInsertQuery);
+
+      const response = await POST(mockRequest);
+
+      expect(mockRequest.json).toHaveBeenCalled();
+      expect(mockAuthUtils.createSuccessResponse).toHaveBeenCalledWith(
+        { task: createdTask },
+        201,
       );
     });
   });
