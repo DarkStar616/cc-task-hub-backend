@@ -855,7 +855,13 @@ const openApiSpec = {
 
 export async function GET(request: NextRequest) {
   try {
-    return createSuccessResponse(openApiSpec);
+    return new Response(JSON.stringify(openApiSpec), {
+      status: 200,
+      headers: { 
+        "Content-Type": "application/json",
+        "Cache-Control": "public, max-age=3600"
+      },
+    });
   } catch (error) {
     console.error("OpenAPI spec error:", error);
     return new Response(

@@ -1,45 +1,61 @@
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
 export async function middleware(req: NextRequest) {
-  const res = NextResponse.next()
+  const res = NextResponse.next();
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+  // Handle API routes with JSON error responses
+  if (req.nextUrl.pathname.startsWith('/api/')) {
+    try {
+      const supabase = createMiddlewareClient({ req, res });
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-  const supabase = createServerClient(
-    supabaseUrl!,
-    supabaseAnonKey!,
-    {
-      cookies: {
-        getAll() {
-          return req.cookies.getAll().map(({ name, value }) => ({
-            name,
-            value,
-          }))
-        },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            req.cookies.set(name, value)
-            res.cookies.set(name, value, options)
-          })
-        },
-      },
+      // Add session info to headers for API routes
+      if (session) {
+        res.headers.set('x-user-id', session.user.id);
+        res.headers.set('x-user-email', session.user.email || '');
+      }
+
+      return res;
+    } catch (error) {
+      console.error('Middleware error for API route:', error);
+      return new Response(
+        JSON.stringify({ error: "Internal server error" }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json" },
+        }
+      );
     }
-  )
-
-  // Refresh session if expired - required for Server Components
-  const { data: { session }, error } = await supabase.auth.getSession()
-
-  if (error) {
-    console.error('Auth session error:', error)
   }
 
-  return res
+  // Handle non-API routes
+  try {
+    const supabase = createMiddlewareClient({ req, res });
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+
+    // If user is signed in and the current path is / redirect the user to /dashboard
+    if (session && req.nextUrl.pathname === "/") {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+
+    // If user is not signed in and the current path is /dashboard redirect the user to /
+    if (!session && req.nextUrl.pathname === "/dashboard") {
+      return NextResponse.redirect(new URL("/", req.url));
+    }
+
+    return res;
+  } catch (error) {
+    console.error('Middleware error:', error);
+    return res;
+  }
 }
 
-// Ensure the middleware is only called for relevant paths
 export const config = {
   matcher: [
     /*
@@ -47,8 +63,7 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - public (public files)
      */
-    '/((?!_next/static|_next/image|favicon.ico|public|api).*)',
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
   ],
-}
+};

@@ -145,14 +145,20 @@ export function createNotFoundResponse(message: string = "Not Found") {
 }
 
 export function createSuccessResponse(data: any, status: number = 200, message?: string) {
-  return new Response(JSON.stringify({
-    success: true,
-    message: message || "Operation completed successfully",
-    data: data
-  }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({
+      success: true,
+      message: message || "Operation completed successfully",
+      data: data
+    }),
+    {
+      status,
+      headers: { 
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache"
+      },
+    }
+  );
 }
 
 export function createErrorResponse(message: string, status: number = 500) {
@@ -161,14 +167,20 @@ export function createErrorResponse(message: string, status: number = 500) {
     logError(new Error(message), { status, type: 'server_error' });
   }
 
-  return new Response(JSON.stringify({
-    success: false,
-    error: message,
-    message: message
-  }), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
+  return new Response(
+    JSON.stringify({
+      success: false,
+      error: message,
+      message: message
+    }),
+    {
+      status,
+      headers: { 
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache"
+      },
+    }
+  );
 }
 
 export function extractUserIdFromToken(token: string): string | null {
