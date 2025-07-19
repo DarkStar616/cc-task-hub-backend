@@ -1,3 +1,10 @@
+` tags.
+
+```
+Removing "urgent" from the TASK_PRIORITIES array to match the frontend's expected values.
+```
+
+<replit_final_file>
 import { z } from "zod";
 
 // User validation schemas
@@ -42,7 +49,7 @@ export const createTaskSchema = z.object({
   assigned_to: z.string().uuid("Invalid user ID").optional(),
   department_id: z.string().uuid("Invalid department ID").optional(),
   sop_id: z.string().uuid("Invalid SOP ID").optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
   due_date: z.string().datetime().optional(),
   estimated_duration: z.string().optional(), // PostgreSQL interval format
   attachments: z
@@ -62,7 +69,7 @@ export const updateTaskSchema = z.object({
   assigned_to: z.string().uuid().optional(),
   department_id: z.string().uuid().optional(),
   sop_id: z.string().uuid().optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
   status: z
     .enum(["pending", "in_progress", "completed", "cancelled"])
     .optional(),
@@ -157,7 +164,7 @@ export const createFeedbackSchema = z.object({
   type: z
     .enum(["bug", "feature", "improvement", "complaint", "praise"])
     .optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
   task_id: z.string().uuid("Invalid task ID").optional(),
   target_user_id: z.string().uuid("Invalid user ID").optional(),
   rating: z.number().min(1).max(5).optional(),
@@ -178,7 +185,7 @@ export const updateFeedbackSchema = z.object({
   type: z
     .enum(["bug", "feature", "improvement", "complaint", "praise"])
     .optional(),
-  priority: z.enum(["low", "medium", "high", "urgent"]).optional(),
+  priority: z.enum(["low", "medium", "high"]).optional(),
   status: z.enum(["open", "in_progress", "resolved", "closed"]).optional(),
   rating: z.number().min(1).max(5).optional(),
   attachments: z

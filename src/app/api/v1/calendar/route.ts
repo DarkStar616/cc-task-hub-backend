@@ -1,19 +1,15 @@
 
 import { NextRequest } from "next/server";
-import {
-  getAuthContext,
-  hasRole,
-  createUnauthorizedResponse,
-  createSuccessResponse,
-  createErrorResponse,
-} from "@/utils/auth";
+import { createClient } from "@/utils/supabase/server";
+import { getUserFromRequest, hasRole } from "@/utils/auth";
+import { createSuccessResponse, createErrorResponse } from "@/utils/response";
+import { mapDepartmentNameToId } from "@/utils/department-mapping";
 
 export async function GET(request: NextRequest) {
   try {
-    const authContext = await getAuthContext(request);
-
-    if (!authContext.user) {
-      return createUnauthorizedResponse();
+    const authResult = await getUserFromRequest(request);
+    if (!authResult.success) {
+      return createErrorResponse(authResult.message, 401);
     }
 
     const { searchParams } = new URL(request.url);
@@ -21,70 +17,111 @@ export async function GET(request: NextRequest) {
     const end = searchParams.get("end");
     const department = searchParams.get("department");
 
-    // Get tasks as calendar events
-    let query = authContext.supabase
+    if (!start || !end) {
+      return createErrorResponse("Start and end dates are required", 400);
+    }
+
+    const supabase = createClient();
+    const user = authResult.user;
+
+    // Department filtering
+    let departmentId = null;
+    if (department && department !== "All Departments") {
+      departmentId = mapDepartmentNameToId(department);
+      if (!departmentId) {
+        return createErrorResponse("Invalid department", 400);
+      }
+    }
+
+    // Get tasks with due dates in the specified range
+    let tasksQuery = supabase
       .from("tasks")
       .select(`
         id,
         title,
         description,
-        due_date,
         status,
         priority,
-        assigned_to,
-        department_id,
-        assigned_user:users!tasks_assigned_to_fkey(full_name),
-        department:departments(name)
+        due_date,
+        department,
+        owner:profiles!tasks_owner_id_fkey(id, name, avatar),
+        assignees:task_assignments(
+          assignee:profiles!task_assignments_user_id_fkey(id, name, avatar)
+        )
       `)
-      .not("due_date", "is", null);
+      .gte("due_date", start)
+      .lte("due_date", end)
+      .not("due_date", "is", null)
+      .order("due_date", { ascending: true });
 
-    // Apply date filters
-    if (start) {
-      query = query.gte("due_date", start);
-    }
-    if (end) {
-      query = query.lte("due_date", end);
-    }
-
-    // Apply role-based filtering
-    if (!hasRole(authContext.user.role, ["God", "Admin"])) {
-      if (hasRole(authContext.user.role, ["Manager"]) && authContext.user.department_id) {
-        query = query.eq("department_id", authContext.user.department_id);
-      } else {
-        query = query.or(`assigned_to.eq.${authContext.user.id},created_by.eq.${authContext.user.id}`);
+    // Apply department filtering
+    if (departmentId) {
+      tasksQuery = tasksQuery.eq("department_id", departmentId);
+    } else if (!hasRole(user, ["god", "admin"])) {
+      // Non-admin users see only their department
+      const userDeptId = mapDepartmentNameToId(user.department);
+      if (userDeptId) {
+        tasksQuery = tasksQuery.eq("department_id", userDeptId);
       }
     }
 
-    if (department && hasRole(authContext.user.role, ["God", "Admin", "Manager"])) {
-      query = query.eq("department_id", department);
+    const { data: tasks, error: tasksError } = await tasksQuery;
+
+    if (tasksError) {
+      console.error("Tasks fetch error:", tasksError);
+      return createErrorResponse("Failed to fetch calendar tasks", 500);
     }
 
-    const { data: tasks, error } = await query;
+    // Get reminders in the specified range
+    let remindersQuery = supabase
+      .from("reminders")
+      .select("id, text, time, recurrence, is_active, created_at")
+      .gte("time", start)
+      .lte("time", end);
 
-    if (error) {
-      console.error("Calendar fetch error:", error);
-      return createErrorResponse("Failed to fetch calendar events");
+    // Filter reminders by user unless admin
+    if (!hasRole(user, ["god", "admin"])) {
+      remindersQuery = remindersQuery.eq("user_id", user.id);
     }
 
-    // Transform tasks to calendar events
-    const events = (tasks || []).map(task => ({
-      id: task.id,
-      title: task.title,
-      description: task.description,
-      start: task.due_date,
-      end: task.due_date,
-      type: "task",
-      status: task.status,
-      priority: task.priority,
-      assigned_to: (task.assigned_user as any)?.full_name,
-      department: (task.department as any)?.name,
-    }));
+    const { data: reminders, error: remindersError } = await remindersQuery;
 
-    return createSuccessResponse({
-      events
-    }, 200, "Calendar events fetched successfully");
+    if (remindersError) {
+      console.error("Reminders fetch error:", remindersError);
+      return createErrorResponse("Failed to fetch calendar reminders", 500);
+    }
+
+    // Format events for calendar
+    const events = [
+      ...(tasks || []).map((task: any) => ({
+        id: task.id,
+        title: task.title,
+        type: "task",
+        start: task.due_date,
+        status: task.status,
+        priority: task.priority,
+        department: task.department,
+        owner: task.owner,
+        assignees: task.assignees?.map((a: any) => a.assignee) || []
+      })),
+      ...(reminders || []).map((reminder: any) => ({
+        id: reminder.id,
+        title: reminder.text,
+        type: "reminder",
+        start: reminder.time,
+        recurrence: reminder.recurrence,
+        is_active: reminder.is_active
+      }))
+    ];
+
+    return createSuccessResponse("Calendar data retrieved successfully", {
+      events,
+      period: { start, end },
+      total_events: events.length
+    });
+
   } catch (error) {
     console.error("Calendar error:", error);
-    return createErrorResponse("Internal server error");
+    return createErrorResponse("Failed to retrieve calendar data", 500);
   }
 }
