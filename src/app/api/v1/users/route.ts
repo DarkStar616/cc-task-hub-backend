@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
       return createErrorResponse("Failed to fetch users");
     }
 
-    return createSuccessResponse({ users: data });
+    return createSuccessResponse(data, 200, "Users fetched successfully");
   } catch (error) {
     console.error("Users GET error:", error);
     return createErrorResponse("Internal server error");
@@ -166,7 +166,7 @@ export async function POST(request: NextRequest) {
       request,
     );
 
-    return createSuccessResponse({ user: newUser }, 201);
+    return createSuccessResponse(newUser, 201, "User created successfully");
   } catch (error) {
     console.error("Users POST error:", error);
     return createErrorResponse("Internal server error");

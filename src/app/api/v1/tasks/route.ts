@@ -95,7 +95,7 @@ export async function GET(request: NextRequest) {
       return createErrorResponse("Failed to fetch tasks");
     }
 
-    return createSuccessResponse({ tasks: data });
+    return createSuccessResponse(data, 200, "Tasks fetched successfully");
   } catch (error) {
     console.error("Tasks GET error:", error);
     return createErrorResponse("Internal server error");
@@ -186,7 +186,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return createSuccessResponse({ task: newTask }, 201);
+    return createSuccessResponse(newTask, 201, "Task created successfully");
   } catch (error) {
     console.error("Tasks POST error:", error);
     return createErrorResponse("Internal server error");

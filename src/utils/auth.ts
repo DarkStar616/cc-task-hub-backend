@@ -100,42 +100,66 @@ export function canManageUser(
 }
 
 export function createUnauthorizedResponse(message: string = "Unauthorized") {
-  return new Response(JSON.stringify({ error: message }), {
+  return new Response(JSON.stringify({
+    success: false,
+    error: message,
+    message: message
+  }), {
     status: 401,
     headers: { "Content-Type": "application/json" },
   });
 }
 
 export function createForbiddenResponse(message: string = "Forbidden") {
-  return new Response(JSON.stringify({ error: message }), {
+  return new Response(JSON.stringify({
+    success: false,
+    error: message,
+    message: message
+  }), {
     status: 403,
     headers: { "Content-Type": "application/json" },
   });
 }
 
 export function createBadRequestResponse(message: string = "Bad Request") {
-  return new Response(JSON.stringify({ error: message }), {
+  return new Response(JSON.stringify({
+    success: false,
+    error: message,
+    message: message
+  }), {
     status: 400,
     headers: { "Content-Type": "application/json" },
   });
 }
 
 export function createNotFoundResponse(message: string = "Not Found") {
-  return new Response(JSON.stringify({ error: message }), {
+  return new Response(JSON.stringify({
+    success: false,
+    error: message,
+    message: message
+  }), {
     status: 404,
     headers: { "Content-Type": "application/json" },
   });
 }
 
-export function createSuccessResponse(data: any, status: number = 200) {
-  return new Response(JSON.stringify(data), {
+export function createSuccessResponse(data: any, status: number = 200, message?: string) {
+  return new Response(JSON.stringify({
+    success: true,
+    message: message || "Operation completed successfully",
+    data: data
+  }), {
     status,
     headers: { "Content-Type": "application/json" },
   });
 }
 
 export function createErrorResponse(message: string, status: number = 500) {
-  return new Response(JSON.stringify({ error: message }), {
+  return new Response(JSON.stringify({
+    success: false,
+    error: message,
+    message: message
+  }), {
     status,
     headers: { "Content-Type": "application/json" },
   });
